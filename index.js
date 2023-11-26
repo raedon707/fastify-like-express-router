@@ -1,36 +1,72 @@
 const express = require('express')
-const methods = require('methods')
+const { contextMiddleware } = require('./src/middlewares/context.middleware')
 
 const methods = [
   'get',
   'put',
   'post',
-  'patch',
-  'post'
+  'patch'
 ]
 
-function Handler (method) {
-  return function (route, options, handler) {
-    Handler.prototype[method](route)
-  }
+const defaultOptions = {
+  preHandler: [],
+  postHandler: [],
+  schema: {
+    query: {},
+    body: {},
+    params: {},
+    response: {
+      default: {},
+      200: {}
+    }
+  },
+  isAuthenticated: false,
+  isBasicAuthenticated: false
 }
-
-function Router () {
-  const router = express.Router()
-  // methods.forEach(method => {
-  //   const expressMethod = router.
-  // })
-}
-
 
 /**
- * @param {Array} methodsToOverride default values are ['get', 'put', 'post', 'patch', 'delete']
- * @returns {import('express').Handler}
+ * @this {import('express').Router}
+ * @param {string} method
+ * @returns {App.Handler}
  */
-function fastifyLikeExpressRouter(methodsToOverride = ['get', 'put', 'post', 'patch', 'delete']) {
-  return function (req, res, next) {
-    next()
+function methodHandler (method) {
+  return function (path, options, handler) {
+    options = Object.assign(defaultOptions, options)
+    const middlewares = []
+
+    if (options.isAuthenticated) {
+      middlewares.push(isAuthenticated)
+    }
+
+    if (options.isBasicAuthenticated) {
+      middlewares.push(basicAuthenticationMiddleware)
+    }
+
+    middlewares.push(contextMiddleware)
+    middlewares.push(requestValidationMiddleware({ body: options.schema?.body, params: options.schema?.params, query: options.schema?.query }))
+    middlewares.push(responseValidationMiddleware(options.schema?.response))
+
+    if (Array.isArray(options.preHandler)) {
+      middlewares.concat(options.preHandler)
+    }
+
+    this[method](
+      path,
+      ...middlewares,
+      handler,
+      ...(Array.isArray(options.postHandler) ? options.postHandler : [])
+    )
   }
 }
 
-const r = Router()
+/**
+ * @param {import('express').RouterOptions} options
+ * @returns {import('express').Router}
+ */
+function Router (options) {
+  const router = express.Router(options)
+  methods.forEach(method => router[method] = methodHandler.call(router, method))
+  return router
+}
+
+module.exports = { Router }
